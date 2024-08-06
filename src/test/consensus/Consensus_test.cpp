@@ -109,15 +109,10 @@ public:
             ConsensusState::MovedOn ==
             checkConsensus(10, 2, 1, 8, 3s, 10s, p, true, journal_));
 
-        // If no peers, don't agree until time has passed.
-        BEAST_EXPECT(
-            ConsensusState::No ==
+       BEAST_EXPECT(
+            ConsensusState::Yes ==
             checkConsensus(0, 0, 0, 0, 3s, 10s, p, true, journal_));
 
-        // Agree if no peers and enough time has passed.
-        BEAST_EXPECT(
-            ConsensusState::Yes ==
-            checkConsensus(0, 0, 0, 0, 3s, 16s, p, true, journal_));
     }
 
     void

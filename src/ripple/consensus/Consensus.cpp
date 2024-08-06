@@ -87,24 +87,10 @@ checkConsensusReached(
     std::size_t agreeing,
     std::size_t total,
     bool count_self,
-    std::size_t minConsensusPct,
-    bool reachedMax)
+    std::size_t minConsensusPct)
 {
-    // If we are alone for too long, we have consensus.
-    // Delaying consensus like this avoids a circumstance where a peer
-    // gets ahead of proposers insofar as it has not received any proposals.
-    // This could happen if there's a slowdown in receiving proposals. Reaching
-    // consensus prematurely in this way means that the peer will likely desync.
-    // The check for reachedMax should allow plenty of time for proposals to
-    // arrive, and there should be no downside. If a peer is truly not
-    // receiving any proposals, then there should be no hurry. There's
-    // really nowhere to go.
     if (total == 0)
-    {
-        if (reachedMax)
-            return true;
-        return false;
-    }
+        return true;
 
     if (count_self)
     {
@@ -158,11 +144,7 @@ checkConsensus(
     // Have we, together with the nodes on our UNL list, reached the threshold
     // to declare consensus?
     if (checkConsensusReached(
-            currentAgree,
-            currentProposers,
-            proposing,
-            parms.minCONSENSUS_PCT,
-            currentAgreeTime > parms.ledgerMAX_CONSENSUS))
+            currentAgree, currentProposers, proposing, parms.minCONSENSUS_PCT))
     {
         JLOG(j.debug()) << "normal consensus";
         return ConsensusState::Yes;
@@ -171,11 +153,7 @@ checkConsensus(
     // Have sufficient nodes on our UNL list moved on and reached the threshold
     // to declare consensus?
     if (checkConsensusReached(
-            currentFinished,
-            currentProposers,
-            false,
-            parms.minCONSENSUS_PCT,
-            currentAgreeTime > parms.ledgerMAX_CONSENSUS))
+            currentFinished, currentProposers, false, parms.minCONSENSUS_PCT))
     {
         JLOG(j.warn()) << "We see no consensus, but 80% of nodes have moved on";
         return ConsensusState::MovedOn;
