@@ -126,6 +126,11 @@ RCLValidationsAdaptor::now() const
 std::optional<RCLValidatedLedger>
 RCLValidationsAdaptor::acquire(LedgerHash const& hash)
 {
+    static unsigned long callsCounter = 0;
+    callsCounter++;
+    JLOG(j_.info())
+            << "RCLValidationsAdaptor::acquire called overall " << callsCounter << " times, current hash: " << hash;
+
     auto ledger = app_.getLedgerMaster().getLedgerByHash(hash);
     if (!ledger)
     {
@@ -136,8 +141,11 @@ RCLValidationsAdaptor::acquire(LedgerHash const& hash)
 
         app_.getJobQueue().addJob(
             jtADVANCE, "getConsensusLedger", [pApp, hash]() {
+                auto const& journal = pApp->logs().journal("Application");
+                JLOG(journal.info()) << "Started acquiring inbound ledger, hash: " << hash;
                 pApp->getInboundLedgers().acquire(
                     hash, 0, InboundLedger::Reason::CONSENSUS);
+                JLOG(journal.info()) << "Finished acquiring inbound ledger, hash: " << hash;
             });
         return std::nullopt;
     }
