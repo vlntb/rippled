@@ -1707,11 +1707,20 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMGetLedger> const& m)
     }
 
     // Queue a job to process the request
-    std::weak_ptr<PeerImp> weak = shared_from_this();
-    app_.getJobQueue().addJob(jtLEDGER_REQ, "recvGetLedger", [weak, m]() {
-        if (auto peer = weak.lock())
-            peer->processLedgerRequest(m);
-    });
+    JLOG(p_journal_.info()) << "Adding processing ledger request to the queue. Ledger index: " << m->ledgerseq()
+                    << ", from peer: " << id();
+     std::weak_ptr<PeerImp> weak = shared_from_this();
+     app_.getJobQueue().addJob(jtLEDGER_REQ, "recvGetLedger", [weak, m]() {
+        if (auto peer = weak.lock()) {
+            auto const& journal = peer->pjournal();
+            JLOG(peer->pjournal().info()) << "Started processing ledger request. Ledger index: " << m->ledgerseq()
+                    << ", from peer: " << peer->id();
+             peer->processLedgerRequest(m);
+            JLOG(journal.info()) << "Finished processing ledger request. Ledger index: " << m->ledgerseq()
+                    << ", from peer: " << peer->id();
+        }
+     });
+
 }
 
 void
