@@ -48,6 +48,7 @@
 #include <xrpld/perflog/PerfLog.h>
 #include <xrpld/rpc/BookChanges.h>
 #include <xrpld/rpc/DeliveredAmount.h>
+#include <xrpld/rpc/MPTokenIssuanceID.h>
 #include <xrpld/rpc/ServerHandler.h>
 #include <xrpl/basics/TaggedCache.ipp>
 #include <xrpl/basics/UptimeClock.h>
@@ -2963,6 +2964,8 @@ NetworkOPsImp::transJson(
         jvObj[jss::meta] = meta->get().getJson(JsonOptions::none);
         RPC::insertDeliveredAmount(
             jvObj[jss::meta], *ledger, transaction, meta->get());
+        RPC::insertMPTokenIssuanceID(
+            jvObj[jss::meta], transaction, meta->get());
     }
 
     if (!ledger->open())
