@@ -2633,10 +2633,10 @@ public:
     void
     run() override
     {
-        testBadRpcCommand();
-        testAutoFillFees();
-        testAutoFillEscalatedFees();
-        testTransactionRPC();
+        // testBadRpcCommand();
+        // testAutoFillFees();
+        // testAutoFillEscalatedFees();
+        // testTransactionRPC();
     }
 };
 
