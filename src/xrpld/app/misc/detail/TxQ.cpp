@@ -1974,9 +1974,9 @@ setup_TxQ(Config const& config)
 
     setup.standAlone = config.standalone();
 
-    setup.minimumTxnInLedger = 4294967295;
-    setup.targetTxnInLedger = 4294967295;
-    setup.normalConsensusIncreasePercent = 4294967295;
+    setup.minimumTxnInLedger = 32;
+    setup.targetTxnInLedger = 256;
+    setup.normalConsensusIncreasePercent = 20;
 
     return setup;
 }
