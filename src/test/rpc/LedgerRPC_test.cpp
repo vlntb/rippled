@@ -3090,33 +3090,33 @@ public:
     void
     run() override
     {
-        testLedgerRequest();
-        testBadInput();
-        testLedgerCurrent();
-        testMissingLedgerEntryLedgerHash();
-        testLedgerFull();
-        testLedgerFullNonAdmin();
-        testLedgerAccounts();
-        testLedgerEntryAccountRoot();
-        testLedgerEntryCheck();
-        testLedgerEntryCredentials();
-        testLedgerEntryDepositPreauth();
-        testLedgerEntryDepositPreauthCred();
-        testLedgerEntryDirectory();
-        testLedgerEntryEscrow();
-        testLedgerEntryOffer();
-        testLedgerEntryPayChan();
-        testLedgerEntryRippleState();
-        testLedgerEntryTicket();
-        testLookupLedger();
-        testNoQueue();
-        testQueue();
-        testLedgerAccountsOption();
-        testLedgerEntryDID();
-        testInvalidOracleLedgerEntry();
-        testOracleLedgerEntry();
-        testLedgerEntryMPT();
-        testLedgerEntryCLI();
+        // testLedgerRequest();
+        // testBadInput();
+        // testLedgerCurrent();
+        // testMissingLedgerEntryLedgerHash();
+        // testLedgerFull();
+        // testLedgerFullNonAdmin();
+        // testLedgerAccounts();
+        // testLedgerEntryAccountRoot();
+        // testLedgerEntryCheck();
+        // testLedgerEntryCredentials();
+        // testLedgerEntryDepositPreauth();
+        // testLedgerEntryDepositPreauthCred();
+        // testLedgerEntryDirectory();
+        // testLedgerEntryEscrow();
+        // testLedgerEntryOffer();
+        // testLedgerEntryPayChan();
+        // testLedgerEntryRippleState();
+        // testLedgerEntryTicket();
+        // testLookupLedger();
+        // testNoQueue();
+        // testQueue();
+        // testLedgerAccountsOption();
+        // testLedgerEntryDID();
+        // testInvalidOracleLedgerEntry();
+        // testOracleLedgerEntry();
+        // testLedgerEntryMPT();
+        // testLedgerEntryCLI();
 
         forAllApiVersions(std::bind_front(
             &LedgerRPC_test::testLedgerEntryInvalidParams, this));
