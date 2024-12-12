@@ -1973,6 +1973,11 @@ setup_TxQ(Config const& config)
     set(setup.minimumLastLedgerBuffer, "minimum_last_ledger_buffer", section);
 
     setup.standAlone = config.standalone();
+
+    setup.minimumTxnInLedger = 4294967295;
+    setup.targetTxnInLedger = 4294967295;
+    setup.normalConsensusIncreasePercent = 4294967295;
+
     return setup;
 }
 
