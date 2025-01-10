@@ -139,15 +139,18 @@ RCLValidationsAdaptor::acquire(LedgerHash const& hash)
         JLOG(j_.debug())
             << "Need validated ledger for preferred ledger analysis " << hash;
 
-        Application* pApp = &app_;
+        // TODO: Temporary turn off getting inbound ledger until this call is
+        // optimised.
 
-        app_.getJobQueue().addJob(
-            jtADVANCE, "getConsensusLedger2", [pApp, hash, this]() {
-                JLOG(j_.debug())
-                    << "JOB advanceLedger getConsensusLedger2 started";
-                pApp->getInboundLedgers().acquireAsync(
-                    hash, 0, InboundLedger::Reason::CONSENSUS);
-            });
+        // Application* pApp = &app_;
+
+        // app_.getJobQueue().addJob(
+        //     jtADVANCE, "getConsensusLedger2", [pApp, hash, this]() {
+        //         JLOG(j_.debug())
+        //             << "JOB advanceLedger getConsensusLedger2 started";
+        //         pApp->getInboundLedgers().acquireAsync(
+        //             hash, 0, InboundLedger::Reason::CONSENSUS);
+        //     });
         return std::nullopt;
     }
 
