@@ -1246,7 +1246,7 @@ PeerImp::handleTransaction(
             // we have seen this transaction recently
             if (flags & SF_BAD)
             {
-                fee_ = Resource::feeInvalidSignature;
+                fee_ = Resource::feeUnwantedData;
                 JLOG(p_journal_.debug()) << "Ignoring known bad tx " << txID;
             }
 
