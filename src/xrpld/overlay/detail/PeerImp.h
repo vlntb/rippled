@@ -145,10 +145,23 @@ private:
     //
     // June 2019
 
+    struct ChargeWithContext
+    {
+        Resource::Charge fee = Resource::feeLightPeer;
+        std::string context = {};
+
+        void
+        append(Resource::Charge f, std::string const& add)
+        {
+            fee = f;
+            context += add;
+        }
+    };
+
     std::mutex mutable recentLock_;
     protocol::TMStatusChange last_status_;
     Resource::Consumer usage_;
-    Resource::Charge fee_;
+    ChargeWithContext fee_;
     std::shared_ptr<PeerFinder::Slot> const slot_;
     boost::beast::multi_buffer read_buffer_;
     http_request_type request_;
@@ -304,7 +317,8 @@ public:
     }
 
     void
-    charge(Resource::Charge const& fee) override;
+    charge(Resource::Charge const& fee, std::string const& context = {})
+        override;
 
     //
     // Identity

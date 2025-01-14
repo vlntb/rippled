@@ -95,7 +95,7 @@ PeerImp::PeerImp(
     , creationTime_(clock_type::now())
     , squelch_(app_.journal("Squelch"))
     , usage_(consumer)
-    , fee_(Resource::feeLightPeer)
+    , fee_(Resource::feeLightPeer, "")
     , slot_(slot)
     , request_(std::move(request))
     , headers_(request_)
@@ -339,9 +339,9 @@ PeerImp::removeTxQueue(uint256 const& hash)
 }
 
 void
-PeerImp::charge(Resource::Charge const& fee)
+PeerImp::charge(Resource::Charge const& fee, std::string const& context)
 {
-    if ((usage_.charge(fee) == Resource::drop) &&
+    if ((usage_.charge(fee, context) == Resource::drop) &&
         usage_.disconnect(p_journal_) && strand_.running_in_this_thread())
     {
         // Sever the connection
@@ -997,9 +997,9 @@ PeerImp::onMessageBegin(
     std::size_t uncompressed_size,
     bool isCompressed)
 {
-    load_event_ =
-        app_.getJobQueue().makeLoadEvent(jtPEER, protocolMessageName(type));
-    fee_ = Resource::feeLightPeer;
+    auto const name = protocolMessageName(type);
+    load_event_ = app_.getJobQueue().makeLoadEvent(jtPEER, name);
+    fee_ = {Resource::feeLightPeer, name};
     auto const category = TrafficCount::categorize(*m, type, true);
     overlay_.reportTraffic(category, true, static_cast<int>(size));
     using namespace protocol;
@@ -1029,7 +1029,7 @@ PeerImp::onMessageEnd(
     std::shared_ptr<::google::protobuf::Message> const&)
 {
     load_event_.reset();
-    charge(fee_);
+    charge(fee_.fee, fee_.context);
 }
 
 void
@@ -1039,12 +1039,12 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMManifests> const& m)
 
     if (s == 0)
     {
-        fee_ = Resource::feeUnwantedData;
+        fee_.append(Resource::feeUnwantedData, " empty");
         return;
     }
 
     if (s > 100)
-        fee_ = Resource::feeMediumBurdenPeer;
+        fee_.append(Resource::feeMediumBurdenPeer, " oversize");
 
     app_.getJobQueue().addJob(
         jtMANIFEST, "receiveManifests", [this, that = shared_from_this(), m]() {
@@ -1058,7 +1058,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMPing> const& m)
     if (m->type() == protocol::TMPing::ptPING)
     {
         // We have received a ping request, reply with a pong
-        fee_ = Resource::feeMediumBurdenPeer;
+        fee_.append(Resource::feeMediumBurdenPeer, " request");
         m->set_type(protocol::TMPing::ptPONG);
         send(std::make_shared<Message>(*m, protocol::mtPING));
         return;
@@ -1095,7 +1095,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMCluster> const& m)
     // VFALCO NOTE I think we should drop the peer immediately
     if (!cluster())
     {
-        fee_ = Resource::feeUnwantedData;
+        fee_.fee = Resource::feeUnwantedData;
         return;
     }
 
@@ -1251,7 +1251,7 @@ PeerImp::handleTransaction(
             // we have seen this transaction recently
             if (flags & SF_BAD)
             {
-                fee_ = Resource::feeUnwantedData;
+                fee_.append(Resource::feeUnwantedData, " known bad");
                 JLOG(p_journal_.debug()) << "Ignoring known bad tx " << txID;
             }
 
@@ -1420,7 +1420,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMProofPathRequest> const& m)
         return;
     }
 
-    fee_ = Resource::feeMediumBurdenPeer;
+    fee_.fee = Resource::feeMediumBurdenPeer;
     std::weak_ptr<PeerImp> weak = shared_from_this();
     app_.getJobQueue().addJob(
         jtREPLAY_REQ, "recvProofPathRequest", [weak, m]() {
@@ -1469,7 +1469,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMReplayDeltaRequest> const& m)
         return;
     }
 
-    fee_ = Resource::feeMediumBurdenPeer;
+    fee_.fee = Resource::feeMediumBurdenPeer;
     std::weak_ptr<PeerImp> weak = shared_from_this();
     app_.getJobQueue().addJob(
         jtREPLAY_REQ, "recvReplayDeltaRequest", [weak, m]() {
@@ -1512,7 +1512,7 @@ void
 PeerImp::onMessage(std::shared_ptr<protocol::TMLedgerData> const& m)
 {
     auto badData = [&](std::string const& msg) {
-        fee_ = Resource::feeBadData;
+        fee_.append(Resource::feeBadData, " " + msg);
         JLOG(p_journal_.warn()) << "TMLedgerData: " << msg;
     };
 
@@ -1612,7 +1612,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMProposeSet> const& m)
         (publicKeyType(makeSlice(set.nodepubkey())) != KeyType::secp256k1))
     {
         JLOG(p_journal_.warn()) << "Proposal: malformed";
-        fee_ = Resource::feeInvalidSignature;
+        fee_.fee = Resource::feeInvalidSignature;
         return;
     }
 
@@ -1620,7 +1620,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMProposeSet> const& m)
         !stringIsUint256Sized(set.previousledger()))
     {
         JLOG(p_journal_.warn()) << "Proposal: malformed";
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " bad hashes");
         return;
     }
 
@@ -1925,7 +1925,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMHaveTransactionSet> const& m)
 {
     if (!stringIsUint256Sized(m->hash()))
     {
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " bad hash");
         return;
     }
 
@@ -1938,7 +1938,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMHaveTransactionSet> const& m)
         if (std::find(recentTxSets_.begin(), recentTxSets_.end(), hash) !=
             recentTxSets_.end())
         {
-            fee_ = Resource::feeUnwantedData;
+            fee_.append(Resource::feeUnwantedData, " duplicate");
             return;
         }
 
@@ -1960,7 +1960,7 @@ PeerImp::onValidatorListMessage(
         JLOG(p_journal_.warn()) << "Ignored malformed " << messageType
                                 << " from peer " << remote_address_;
         // This shouldn't ever happen with a well-behaved peer
-        fee_ = Resource::feeHighBurdenPeer;
+        fee_.append(Resource::feeBadData, " no blobs");
         return;
     }
 
@@ -1977,7 +1977,7 @@ PeerImp::onValidatorListMessage(
         // Charging this fee here won't hurt the peer in the normal
         // course of operation (ie. refresh every 5 minutes), but
         // will add up if the peer is misbehaving.
-        fee_ = Resource::feeUnwantedData;
+        fee_.append(Resource::feeUnwantedData, " duplicate");
         return;
     }
 
@@ -2056,27 +2056,27 @@ PeerImp::onValidatorListMessage(
             // Charging this fee here won't hurt the peer in the normal
             // course of operation (ie. refresh every 5 minutes), but
             // will add up if the peer is misbehaving.
-            fee_ = Resource::feeUnwantedData;
+            fee_.append(Resource::feeUnwantedData, " duplicate");
             break;
         case ListDisposition::stale:
             // There are very few good reasons for a peer to send an
             // old list, particularly more than once.
-            fee_ = Resource::feeBadData;
+            fee_.append(Resource::feeBadData, " expired");
             break;
         case ListDisposition::untrusted:
             // Charging this fee here won't hurt the peer in the normal
             // course of operation (ie. refresh every 5 minutes), but
             // will add up if the peer is misbehaving.
-            fee_ = Resource::feeUnwantedData;
+            fee_.append(Resource::feeUnwantedData, " untrusted");
             break;
         case ListDisposition::invalid:
             // This shouldn't ever happen with a well-behaved peer
-            fee_ = Resource::feeInvalidSignature;
+            fee_.fee = Resource::feeInvalidSignature;
             break;
         case ListDisposition::unsupported_version:
             // During a version transition, this may be legitimate.
             // If it happens frequently, that's probably bad.
-            fee_ = Resource::feeBadData;
+            fee_.append(Resource::feeBadData, " version");
             break;
         default:
             assert(false);
@@ -2153,7 +2153,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMValidatorList> const& m)
                 << "ValidatorList: received validator list from peer using "
                 << "protocol version " << to_string(protocol_)
                 << " which shouldn't support this feature.";
-            fee_ = Resource::feeUnwantedData;
+            fee_.append(Resource::feeUnwantedData, " unsupported peer");
             return;
         }
         onValidatorListMessage(
@@ -2166,7 +2166,8 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMValidatorList> const& m)
     {
         JLOG(p_journal_.warn()) << "ValidatorList: Exception, " << e.what()
                                 << " from peer " << remote_address_;
-        fee_ = Resource::feeBadData;
+        using namespace std::string_literals;
+        fee_.append(Resource::feeBadData, " "s + e.what());
     }
 }
 
@@ -2182,7 +2183,7 @@ PeerImp::onMessage(
                 << "ValidatorListCollection: received validator list from peer "
                 << "using protocol version " << to_string(protocol_)
                 << " which shouldn't support this feature.";
-            fee_ = Resource::feeUnwantedData;
+            fee_.append(Resource::feeUnwantedData, " unsupported peer");
             return;
         }
         else if (m->version() < 2)
@@ -2192,7 +2193,7 @@ PeerImp::onMessage(
                    "version "
                 << m->version() << " from peer using protocol version "
                 << to_string(protocol_);
-            fee_ = Resource::feeBadData;
+            fee_.append(Resource::feeBadData, " wrong version");
             return;
         }
         onValidatorListMessage(
@@ -2205,7 +2206,8 @@ PeerImp::onMessage(
     {
         JLOG(p_journal_.warn()) << "ValidatorListCollection: Exception, "
                                 << e.what() << " from peer " << remote_address_;
-        fee_ = Resource::feeBadData;
+        using namespace std::string_literals;
+        fee_.append(Resource::feeBadData, " "s + e.what());
     }
 }
 
@@ -2215,7 +2217,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMValidation> const& m)
     if (m->validation().size() < 50)
     {
         JLOG(p_journal_.warn()) << "Validation: Too small";
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " too small");
         return;
     }
 
@@ -2243,7 +2245,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMValidation> const& m)
                 val->getSeenTime()))
         {
             JLOG(p_journal_.trace()) << "Validation: Not current";
-            fee_ = Resource::feeUnwantedData;
+            fee_.append(Resource::feeUnwantedData, " not current");
             return;
         }
 
@@ -2316,7 +2318,8 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMValidation> const& m)
     {
         JLOG(p_journal_.warn())
             << "Exception processing validation: " << e.what();
-        fee_ = Resource::feeInvalidRequest;
+        using namespace std::string_literals;
+        fee_.append(Resource::feeInvalidRequest, " "s + e.what());
     }
 }
 
@@ -2349,7 +2352,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMGetObjectByHash> const& m)
             {
                 JLOG(p_journal_.error())
                     << "TMGetObjectByHash: tx reduce-relay is disabled";
-                fee_ = Resource::feeInvalidRequest;
+                fee_.append(Resource::feeInvalidRequest, " disabled");
                 return;
             }
 
@@ -2362,7 +2365,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMGetObjectByHash> const& m)
             return;
         }
 
-        fee_ = Resource::feeMediumBurdenPeer;
+        fee_.fee = Resource::feeMediumBurdenPeer;
 
         protocol::TMGetObjectByHash reply;
 
@@ -2377,7 +2380,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMGetObjectByHash> const& m)
         {
             if (!stringIsUint256Sized(packet.ledgerhash()))
             {
-                fee_ = Resource::feeInvalidRequest;
+                fee_.append(Resource::feeInvalidRequest, " ledger hash");
                 return;
             }
 
@@ -2481,7 +2484,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMHaveTransactions> const& m)
     {
         JLOG(p_journal_.error())
             << "TMHaveTransactions: tx reduce-relay is disabled";
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " disabled");
         return;
     }
 
@@ -2510,7 +2513,7 @@ PeerImp::handleHaveTransactions(
         {
             JLOG(p_journal_.error())
                 << "TMHaveTransactions with invalid hash size";
-            fee_ = Resource::feeInvalidRequest;
+            fee_.append(Resource::feeInvalidRequest, "hash size");
             return;
         }
 
@@ -2550,12 +2553,12 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMTransactions> const& m)
     {
         JLOG(p_journal_.error())
             << "TMTransactions: tx reduce-relay is disabled";
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " disabled");
         return;
     }
 
     // Something new: Dynamic fee
-    fee_ = Resource::Charge(m->transactions_size(), "transactions");
+    fee_.fee = Resource::Charge(m->transactions_size(), "transactions");
 
     JLOG(p_journal_.trace())
         << "received TMTransactions " << m->transactions_size();
@@ -2659,11 +2662,11 @@ PeerImp::doFetchPack(const std::shared_ptr<protocol::TMGetObjectByHash>& packet)
     if (!stringIsUint256Sized(packet->ledgerhash()))
     {
         JLOG(p_journal_.warn()) << "FetchPack hash size malformed";
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " hash size");
         return;
     }
 
-    fee_ = Resource::feeHighBurdenPeer;
+    fee_.fee = Resource::feeHighBurdenPeer;
 
     uint256 const hash{packet->ledgerhash()};
 
@@ -2688,7 +2691,7 @@ PeerImp::doTransactions(
     if (packet->objects_size() > reduce_relay::MAX_TX_QUEUE_SIZE)
     {
         JLOG(p_journal_.error()) << "doTransactions, invalid number of hashes";
-        fee_ = Resource::feeInvalidRequest;
+        fee_.append(Resource::feeInvalidRequest, " too big");
         return;
     }
 
@@ -2698,7 +2701,7 @@ PeerImp::doTransactions(
 
         if (!stringIsUint256Sized(obj.hash()))
         {
-            fee_ = Resource::feeInvalidRequest;
+            fee_.append(Resource::feeInvalidRequest, " hash size");
             return;
         }
 
@@ -2710,7 +2713,7 @@ PeerImp::doTransactions(
         {
             JLOG(p_journal_.error()) << "doTransactions, transaction not found "
                                      << Slice(hash.data(), hash.size());
-            fee_ = Resource::feeInvalidRequest;
+            fee_.append(Resource::feeInvalidRequest, " tx not found");
             return;
         }
 
@@ -2747,7 +2750,7 @@ PeerImp::checkTransaction(
              app_.getLedgerMaster().getValidLedgerIndex()))
         {
             app_.getHashRouter().setFlags(stx->getTransactionID(), SF_BAD);
-            charge(Resource::feeUnwantedData);
+            charge(Resource::feeUnwantedData, "expired tx");
             return;
         }
 
@@ -2773,7 +2776,7 @@ PeerImp::checkTransaction(
                     app_.overlay().noRelayTx(tx->getID(), *toSkip);
                 }
                 if (!batch)
-                    charge(Resource::feeUnwantedData);
+                    charge(Resource::feeUnwantedData, "pseudo tx");
 
                 return;
             }
@@ -2797,7 +2800,7 @@ PeerImp::checkTransaction(
 
                 // Probably not necessary to set SF_BAD, but doesn't hurt.
                 app_.getHashRouter().setFlags(stx->getTransactionID(), SF_BAD);
-                charge(Resource::feeInvalidSignature);
+                charge(Resource::feeInvalidSignature, "tx");
                 return;
             }
         }
@@ -2818,7 +2821,7 @@ PeerImp::checkTransaction(
                     << "Exception checking transaction: " << reason;
             }
             app_.getHashRouter().setFlags(stx->getTransactionID(), SF_BAD);
-            charge(Resource::feeInvalidSignature);
+            charge(Resource::feeInvalidSignature, "tx (impossible)");
             return;
         }
 
@@ -2850,7 +2853,7 @@ PeerImp::checkPropose(
     if (!cluster() && !peerPos.checkSign())
     {
         JLOG(p_journal_.warn()) << "Proposal fails sig check";
-        charge(Resource::feeInvalidSignature);
+        charge(Resource::feeInvalidSignature, "proposal");
         return;
     }
 
@@ -2887,7 +2890,7 @@ PeerImp::checkValidation(
     if (!val->isValid())
     {
         JLOG(p_journal_.debug()) << "Validation forwarded by peer is invalid";
-        charge(Resource::feeInvalidSignature);
+        charge(Resource::feeInvalidSignature, "validation");
         return;
     }
 

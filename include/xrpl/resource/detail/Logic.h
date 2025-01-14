@@ -442,7 +442,7 @@ public:
     }
 
     Disposition
-    charge(Entry& entry, Charge const& fee)
+    charge(Entry& entry, Charge const& fee, std::string context = "")
     {
         assert(
             feeDrop.cost() > feeInvalidSignature.cost() &&
@@ -457,10 +457,14 @@ public:
                 return m_journal.debug();
             return m_journal.trace();
         };
+        if (!context.empty())
+            context = " (" + context + ")";
+
         std::lock_guard _(lock_);
         clock_type::time_point const now(m_clock.now());
         int const balance(entry.add(fee.cost(), now));
-        JLOG(getStream(fee.cost())) << "Charging " << entry << " for " << fee;
+        JLOG(getStream(fee.cost()))
+            << "Charging " << entry << " for " << fee << context;
         return disposition(balance);
     }
 
