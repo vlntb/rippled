@@ -1211,14 +1211,19 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMEndpoints> const& m)
 void
 PeerImp::onMessage(std::shared_ptr<protocol::TMTransaction> const& m)
 {
-    handleTransaction(m, true);
+    handleTransaction(m, true, false);
 }
 
 void
 PeerImp::handleTransaction(
     std::shared_ptr<protocol::TMTransaction> const& m,
-    bool eraseTxQueue)
+    bool eraseTxQueue,
+    bool batch)
 {
+    assert(
+        (eraseTxQueue != batch) &&
+        // Include a message to make this easier to convert to XRPL_ASSERT
+        ("ripple::PeerImp::handleTransaction correct function params"));
     if (tracking_.load() == Tracking::diverged)
         return;
 
@@ -1300,9 +1305,11 @@ PeerImp::handleTransaction(
                 [weak = std::weak_ptr<PeerImp>(shared_from_this()),
                  flags,
                  checkSignature,
+                 batch,
                  stx]() {
                     if (auto peer = weak.lock())
-                        peer->checkTransaction(flags, checkSignature, stx);
+                        peer->checkTransaction(
+                            flags, checkSignature, stx, batch);
                 });
         }
     }
@@ -2547,6 +2554,9 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMTransactions> const& m)
         return;
     }
 
+    // Something new: Dynamic fee
+    fee_ = Resource::Charge(m->transactions_size(), "transactions");
+
     JLOG(p_journal_.trace())
         << "received TMTransactions " << m->transactions_size();
 
@@ -2556,7 +2566,8 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMTransactions> const& m)
         handleTransaction(
             std::shared_ptr<protocol::TMTransaction>(
                 m->mutable_transactions(i), [](protocol::TMTransaction*) {}),
-            false);
+            false,
+            true);
 }
 
 void
@@ -2724,7 +2735,8 @@ void
 PeerImp::checkTransaction(
     int flags,
     bool checkSignature,
-    std::shared_ptr<STTx const> const& stx)
+    std::shared_ptr<STTx const> const& stx,
+    bool batch)
 {
     // VFALCO TODO Rewrite to not use exceptions
     try
@@ -2737,6 +2749,27 @@ PeerImp::checkTransaction(
             app_.getHashRouter().setFlags(stx->getTransactionID(), SF_BAD);
             charge(Resource::feeUnwantedData);
             return;
+        }
+
+        if (isPseudoTx(*stx))
+        {
+            // Don't do anything with pseudo transactions except put them in the
+            // TransactionMaster cache
+            std::string reason;
+            auto tx = std::make_shared<Transaction>(stx, reason, app_);
+            assert(tx->getStatus() == NEW);
+            if (tx->getStatus() == NEW)
+            {
+                JLOG(p_journal_.debug())
+                    << "Cacheing " << (batch ? "batch" : "unsolicited")
+                    << " pseudo-transaction tx " << tx->getID();
+
+                app_.getMasterTransaction().canonicalize(&tx);
+                if (!batch)
+                    charge(Resource::feeUnwantedData);
+
+                return;
+            }
         }
 
         if (checkSignature)

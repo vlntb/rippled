@@ -482,11 +482,15 @@ private:
        the queue when called from onMessage(TMTransactions) because this
        message is a response to the missing transactions request and the queue
        would not have any of these transactions.
+       @param batch is false when called from onMessage(TMTransaction)
+       and is true when called from onMessage(TMTransactions). If true, then the
+       transaction is part of a batch, and should not be charged an extra fee.
      */
     void
     handleTransaction(
         std::shared_ptr<protocol::TMTransaction> const& m,
-        bool eraseTxQueue);
+        bool eraseTxQueue,
+        bool batch);
 
     /** Handle protocol message with hashes of transactions that have not
        been relayed by an upstream node down to its peers - request
@@ -598,7 +602,8 @@ private:
     checkTransaction(
         int flags,
         bool checkSignature,
-        std::shared_ptr<STTx const> const& stx);
+        std::shared_ptr<STTx const> const& stx,
+        bool batch);
 
     void
     checkPropose(
