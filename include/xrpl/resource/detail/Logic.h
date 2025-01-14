@@ -444,10 +444,23 @@ public:
     Disposition
     charge(Entry& entry, Charge const& fee)
     {
+        assert(
+            feeDrop.cost() > feeInvalidSignature.cost() &&
+            feeInvalidSignature.cost() > feeInvalidRequest.cost() &&
+            feeInvalidRequest.cost() > 10);
+        auto getStream = [this](Resource::Charge::value_type cost) {
+            if (cost >= feeDrop.cost())
+                return m_journal.warn();
+            if (cost >= feeInvalidSignature.cost())
+                return m_journal.info();
+            if (cost >= feeInvalidRequest.cost())
+                return m_journal.debug();
+            return m_journal.trace();
+        };
         std::lock_guard _(lock_);
         clock_type::time_point const now(m_clock.now());
         int const balance(entry.add(fee.cost(), now));
-        JLOG(m_journal.trace()) << "Charging " << entry << " for " << fee;
+        JLOG(getStream(fee.cost())) << "Charging " << entry << " for " << fee;
         return disposition(balance);
     }
 
