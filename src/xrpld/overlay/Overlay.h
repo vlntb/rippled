@@ -173,6 +173,14 @@ public:
         uint256 const& uid,
         PublicKey const& validator) = 0;
 
+    /** Do not relay a transaction. If the tx reduce-relay feature is enabled
+     * then queue transaction's hash for the rest of the peers.
+     * @param hash transaction's hash
+     * @param toSkip peers which have already seen this transaction
+     */
+    virtual void
+    noRelayTx(uint256 const& hash, std::set<Peer::id_t> const& toSkip) = 0;
+
     /** Relay a transaction. If the tx reduce-relay feature is enabled then
      * randomly select peers to relay to and queue transaction's hash
      * for the rest of the peers.

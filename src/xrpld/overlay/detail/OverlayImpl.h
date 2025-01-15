@@ -236,6 +236,9 @@ public:
         PublicKey const& validator) override;
 
     void
+    noRelayTx(uint256 const& hash, std::set<Peer::id_t> const& toSkip) override;
+
+    void
     relay(
         uint256 const&,
         protocol::TMTransaction& m,
@@ -439,6 +442,13 @@ public:
     }
 
 private:
+    void
+    maybeRelayTx(
+        bool relay,
+        uint256 const& hash,
+        std::shared_ptr<Message> const& sm,
+        std::set<Peer::id_t> const& toSkip);
+
     void
     squelch(
         PublicKey const& validator,

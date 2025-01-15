@@ -2765,6 +2765,13 @@ PeerImp::checkTransaction(
                     << " pseudo-transaction tx " << tx->getID();
 
                 app_.getMasterTransaction().canonicalize(&tx);
+                // Tell the overlay about it, but don't relay it.
+                auto const toSkip =
+                    app_.getHashRouter().shouldRelay(tx->getID());
+                if (toSkip)
+                {
+                    app_.overlay().noRelayTx(tx->getID(), *toSkip);
+                }
                 if (!batch)
                     charge(Resource::feeUnwantedData);
 
