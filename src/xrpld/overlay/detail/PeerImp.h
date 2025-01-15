@@ -317,8 +317,7 @@ public:
     }
 
     void
-    charge(Resource::Charge const& fee, std::string const& context = {})
-        override;
+    charge(Resource::Charge const& fee, std::string const& context) override;
 
     //
     // Identity

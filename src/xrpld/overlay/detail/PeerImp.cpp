@@ -1173,7 +1173,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMEndpoints> const& m)
     // implication for the protocol.
     if (m->endpoints_v2().size() >= 1024)
     {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "endpoints too large");
         return;
     }
 
@@ -1188,7 +1188,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMEndpoints> const& m)
         {
             JLOG(p_journal_.error()) << "failed to parse incoming endpoint: {"
                                      << tm.endpoint() << "}";
-            charge(Resource::feeBadData);
+            charge(Resource::feeBadData, "endpoints malformed");
             continue;
         }
 
@@ -1325,7 +1325,7 @@ void
 PeerImp::onMessage(std::shared_ptr<protocol::TMGetLedger> const& m)
 {
     auto badData = [&](std::string const& msg) {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "get_ledger " + msg);
         JLOG(p_journal_.warn()) << "TMGetLedger: " << msg;
     };
     auto const itype{m->itype()};
@@ -1416,7 +1416,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMProofPathRequest> const& m)
     JLOG(p_journal_.trace()) << "onMessage, TMProofPathRequest";
     if (!ledgerReplayEnabled_)
     {
-        charge(Resource::feeInvalidRequest);
+        charge(Resource::feeInvalidRequest, "proof_path_request disabled");
         return;
     }
 
@@ -1431,9 +1431,11 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMProofPathRequest> const& m)
                 if (reply.has_error())
                 {
                     if (reply.error() == protocol::TMReplyError::reBAD_REQUEST)
-                        peer->charge(Resource::feeInvalidRequest);
+                        peer->charge(
+                            Resource::feeInvalidRequest, "proof_path_request");
                     else
-                        peer->charge(Resource::feeRequestNoReply);
+                        peer->charge(
+                            Resource::feeRequestNoReply, "proof_path_request");
                 }
                 else
                 {
@@ -1449,13 +1451,13 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMProofPathResponse> const& m)
 {
     if (!ledgerReplayEnabled_)
     {
-        charge(Resource::feeInvalidRequest);
+        charge(Resource::feeInvalidRequest, "proof_path_response disabled");
         return;
     }
 
     if (!ledgerReplayMsgHandler_.processProofPathResponse(m))
     {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "proof_path_response");
     }
 }
 
@@ -1465,7 +1467,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMReplayDeltaRequest> const& m)
     JLOG(p_journal_.trace()) << "onMessage, TMReplayDeltaRequest";
     if (!ledgerReplayEnabled_)
     {
-        charge(Resource::feeInvalidRequest);
+        charge(Resource::feeInvalidRequest, "replay_delta_request disabled");
         return;
     }
 
@@ -1480,9 +1482,13 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMReplayDeltaRequest> const& m)
                 if (reply.has_error())
                 {
                     if (reply.error() == protocol::TMReplyError::reBAD_REQUEST)
-                        peer->charge(Resource::feeInvalidRequest);
+                        peer->charge(
+                            Resource::feeInvalidRequest,
+                            "replay_delta_request");
                     else
-                        peer->charge(Resource::feeRequestNoReply);
+                        peer->charge(
+                            Resource::feeRequestNoReply,
+                            "replay_delta_request");
                 }
                 else
                 {
@@ -1498,13 +1504,13 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMReplayDeltaResponse> const& m)
 {
     if (!ledgerReplayEnabled_)
     {
-        charge(Resource::feeInvalidRequest);
+        charge(Resource::feeInvalidRequest, "replay_delta_response disabled");
         return;
     }
 
     if (!ledgerReplayMsgHandler_.processReplayDeltaResponse(m))
     {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "replay_delta_response");
     }
 }
 
@@ -2586,14 +2592,14 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMSquelch> const& m)
 
     if (!m->has_validatorpubkey())
     {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "squelch no pubkey");
         return;
     }
     auto validator = m->validatorpubkey();
     auto const slice{makeSlice(validator)};
     if (!publicKeyType(slice))
     {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "squelch bad pubkey");
         return;
     }
     PublicKey key(slice);
@@ -2601,7 +2607,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMSquelch> const& m)
     // Ignore non-validator squelch
     if (!app_.validators().listed(key))
     {
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "squelch non-validator");
         JLOG(p_journal_.debug())
             << "onMessage: TMSquelch discarding non-validator squelch "
             << slice;
@@ -2621,7 +2627,7 @@ PeerImp::onMessage(std::shared_ptr<protocol::TMSquelch> const& m)
     if (!m->squelch())
         squelch_.removeSquelch(key);
     else if (!squelch_.addSquelch(key, std::chrono::seconds{duration}))
-        charge(Resource::feeBadData);
+        charge(Resource::feeBadData, "squelch duration");
 
     JLOG(p_journal_.debug())
         << "onMessage: TMSquelch " << slice << " " << id() << " " << duration;
@@ -2834,7 +2840,8 @@ PeerImp::checkTransaction(
         JLOG(p_journal_.warn())
             << "Exception in " << __func__ << ": " << ex.what();
         app_.getHashRouter().setFlags(stx->getTransactionID(), SF_BAD);
-        charge(Resource::feeBadData);
+        using namespace std::string_literals;
+        charge(Resource::feeBadData, "tx "s + ex.what());
     }
 }
 
@@ -2920,7 +2927,8 @@ PeerImp::checkValidation(
     {
         JLOG(p_journal_.trace())
             << "Exception processing validation: " << ex.what();
-        charge(Resource::feeInvalidRequest);
+        using namespace std::string_literals;
+        charge(Resource::feeInvalidRequest, "validation "s + ex.what());
     }
 }
 
@@ -3089,7 +3097,7 @@ PeerImp::getLedger(std::shared_ptr<protocol::TMGetLedger> const& m)
             {
                 // Do not resource charge a peer responding to a relay
                 if (!m->has_requestcookie())
-                    charge(Resource::feeInvalidRequest);
+                    charge(Resource::feeInvalidRequest, "get_ledger ledgerSeq");
 
                 ledger.reset();
                 JLOG(p_journal_.warn())
@@ -3151,7 +3159,7 @@ PeerImp::processLedgerRequest(std::shared_ptr<protocol::TMGetLedger> const& m)
 {
     // Do not resource charge a peer responding to a relay
     if (!m->has_requestcookie())
-        charge(Resource::feeMediumBurdenPeer);
+        charge(Resource::feeMediumBurdenPeer, "get_ledger");
 
     std::shared_ptr<Ledger const> ledger;
     std::shared_ptr<SHAMap const> sharedMap;
